@@ -1,0 +1,16 @@
+id,name,price,category,in_stock
+1,Wireless Headphones,89.99,Electronics,true
+2,Coffee Maker,156.50,Kitchen,true
+3,Running Shoes,124.99,Sports,false
+4,Laptop Stand,45.00,Office,true
+5,Bluetooth Speaker,67.25,Electronics,true
+6,Yoga Mat,29.99,Sports,true
+7,Desk Lamp,78.50,Office,false
+8,Protein Powder,49.99,Health,true
+9,Gaming Mouse,112.00,Electronics,true
+10,Water Bottle,24.99,Sports,true
+11,Notebook Set,15.99,Office,true
+12,Phone Case,19.99,Electronics,true
+13,Resistance Bands,34.99,Sports,true
+14,Desk Organizer,42.50,Office,false
+15,Vitamins,28.99,Health,true

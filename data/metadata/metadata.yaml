@@ -1,0 +1,49 @@
+csvs:
+  - name: Users
+    path: users.csv
+    fields:
+      - name: id
+        type: Int
+        description: Unique user identifier
+      - name: email
+        type: String
+        description: User email address
+      - name: created_at
+        type: DateTime
+        description: Account creation timestamp
+      - name: age
+        type: Int
+        description: User age in years
+      - name: is_active
+        type: Boolean
+        description: Whether the user account is active
+    relationships: []
+
+  - name: Orders
+    path: orders.csv
+    fields:
+      - name: id
+        type: Int
+        description: Unique order identifier
+      - name: user_id
+        type: Int
+        description: ID of the user who placed the order
+      - name: order_date
+        type: Date
+        description: Date the order was placed
+      - name: total_amount
+        type: Float
+        description: Total order amount in dollars
+      - name: status
+        type: String
+        description: Current order status
+    relationships:
+      - field: user_id
+        references: Users
+        referenceField: id
+        type: one-to-one
+
+  - name: Products
+    metadataFile: products.yaml
+    path: products.csv
+    relationships: []

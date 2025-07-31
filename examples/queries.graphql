@@ -1,0 +1,174 @@
+# Example GraphQL Queries for CSV API
+
+# 1. Basic query - Get all users
+query GetAllUsers {
+  userss {
+    items {
+      id
+      email
+      age
+      is_active
+      created_at
+    }
+    totalCount
+    offset
+    limit
+  }
+}
+
+# 2. Query with filters - Active users over 30
+query GetActiveUsersOver30 {
+  userss(
+    filter: {
+      age: { gte: 30 }
+      is_active: { eq: true }
+    }
+  ) {
+    items {
+      id
+      email
+      age
+    }
+    totalCount
+  }
+}
+
+# 3. Query with pagination
+query GetUsersPaginated {
+  userss(
+    pagination: {
+      offset: 0
+      limit: 5
+    }
+  ) {
+    items {
+      id
+      email
+    }
+    totalCount
+    offset
+    limit
+  }
+}
+
+# 4. Query with string filters
+query SearchUsersByEmail {
+  userss(
+    filter: {
+      email: { contains: "example.com" }
+    }
+  ) {
+    items {
+      id
+      email
+    }
+  }
+}
+
+# 5. Query with date filters
+query GetRecentUsers {
+  userss(
+    filter: {
+      created_at: { gte: "2023-06-01T00:00:00Z" }
+    }
+  ) {
+    items {
+      id
+      email
+      created_at
+    }
+  }
+}
+
+# 6. Query orders with user relationship
+query GetOrdersWithUsers {
+  orderss {
+    items {
+      id
+      order_date
+      total_amount
+      status
+      users {
+        id
+        email
+        name
+      }
+    }
+  }
+}
+
+# 7. Complex query with multiple filters and pagination
+query GetHighValueCompletedOrders {
+  orderss(
+    filter: {
+      total_amount: { gte: 100.0 }
+      status: { eq: "completed" }
+      order_date: { gte: "2023-01-01" }
+    }
+    pagination: {
+      offset: 0
+      limit: 10
+    }
+  ) {
+    items {
+      id
+      order_date
+      total_amount
+      status
+      users {
+        email
+      }
+    }
+    totalCount
+  }
+}
+
+# 8. Query products with filters
+query GetInStockElectronics {
+  productss(
+    filter: {
+      category: { eq: "Electronics" }
+      in_stock: { eq: true }
+      price: { lte: 100.0 }
+    }
+  ) {
+    items {
+      id
+      name
+      price
+      category
+      in_stock
+    }
+    totalCount
+  }
+}
+
+# 9. Query with IN operator
+query GetSpecificProducts {
+  productss(
+    filter: {
+      id: { in: [1, 5, 10] }
+    }
+  ) {
+    items {
+      id
+      name
+      price
+    }
+  }
+}
+
+# 10. Query with NOT EQUAL filter
+query GetNonElectronicProducts {
+  productss(
+    filter: {
+      category: { ne: "Electronics" }
+    }
+  ) {
+    items {
+      name
+      category
+      price
+    }
+  }
+}

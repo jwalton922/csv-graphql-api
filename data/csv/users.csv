@@ -1,0 +1,9 @@
+id,email,created_at,age,is_active
+1,john.doe@example.com,2023-01-15T10:30:00Z,28,true
+2,jane.smith@example.com,2023-02-22T14:45:00Z,34,true
+3,bob.johnson@example.com,2023-03-10T09:15:00Z,42,false
+4,alice.wilson@example.com,2023-04-05T16:20:00Z,26,true
+5,charlie.brown@example.com,2023-05-12T11:30:00Z,31,true
+6,diana.prince@example.com,2023-06-18T13:45:00Z,29,false
+7,eve.adams@example.com,2023-07-03T08:00:00Z,37,true
+8,frank.miller@example.com,2023-08-14T17:30:00Z,45,true

@@ -1,0 +1,13 @@
+id,user_id,order_date,total_amount,status
+101,1,2023-01-20,89.99,completed
+102,2,2023-02-25,156.50,completed
+103,1,2023-03-15,45.00,shipped
+104,3,2023-03-18,234.75,cancelled
+105,4,2023-04-10,67.25,completed
+106,2,2023-04-22,112.00,processing
+107,5,2023-05-18,89.99,completed
+108,1,2023-06-01,299.99,shipped
+109,6,2023-06-25,78.50,completed
+110,7,2023-07-10,145.25,processing
+111,4,2023-07-28,203.00,completed
+112,8,2023-08-20,56.75,shipped

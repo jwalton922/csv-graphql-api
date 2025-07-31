@@ -1,0 +1,16 @@
+fields:
+  - name: id
+    type: Int
+    description: Unique product identifier
+  - name: name
+    type: String
+    description: Product name
+  - name: price
+    type: Float
+    description: Product price in dollars
+  - name: category
+    type: String
+    description: Product category
+  - name: in_stock
+    type: Boolean
+    description: Whether the product is currently in stock
