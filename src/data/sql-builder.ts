@@ -258,20 +258,53 @@ export class SQLQueryBuilder {
     toTable: string,
     toField: string,
     fromValue: any,
-    isOneToMany: boolean
+    isOneToMany: boolean,
+    filters?: SQLFilter,
+    pagination?: SQLPagination
   ): { sql: string; params: any[] } {
     const safeFromTable = this.database.sanitizeIdentifier(fromTable);
     const safeFromField = this.database.sanitizeIdentifier(fromField);
     const safeToTable = this.database.sanitizeIdentifier(toTable);
     const safeToField = this.database.sanitizeIdentifier(toField);
 
-    const sql = `
-      SELECT * FROM ${safeToTable}
-      WHERE ${safeToField} = ?
-      ORDER BY _rowid
-      ${isOneToMany ? '' : 'LIMIT 1'}
-    `;
+    const params: any[] = [];
+    
+    // Start with base query
+    let sql = `SELECT * FROM ${safeToTable}`;
+    
+    // Add WHERE clause for relationship
+    const whereConditions: string[] = [`${safeToField} = ?`];
+    params.push(fromValue);
+    
+    // Add filter conditions if provided
+    if (filters && Object.keys(filters).length > 0) {
+      const filterConditions = this.buildWhereClause(filters, params);
+      if (filterConditions) {
+        whereConditions.push(filterConditions);
+      }
+    }
+    
+    sql += ` WHERE ${whereConditions.join(' AND ')}`;
+    
+    // Add ORDER BY for consistent results
+    sql += ' ORDER BY _rowid';
+    
+    // Add pagination for one-to-many, or LIMIT 1 for one-to-one
+    if (isOneToMany) {
+      if (pagination) {
+        if (pagination.limit !== undefined) {
+          sql += ' LIMIT ?';
+          params.push(pagination.limit);
+        }
+        if (pagination.offset !== undefined) {
+          sql += ' OFFSET ?';
+          params.push(pagination.offset);
+        }
+      }
+    } else {
+      sql += ' LIMIT 1';
+    }
 
-    return { sql: sql.trim(), params: [fromValue] };
+    return { sql: sql.trim(), params };
   }
 }

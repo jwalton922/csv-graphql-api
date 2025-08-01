@@ -121,11 +121,28 @@ export class SchemaGenerator {
             type: relationship.type === 'one-to-many' 
               ? new GraphQLList(relatedType)
               : relatedType,
-            args: relatedFilterType ? {
-              filter: { type: relatedFilterType }
-            } : {},
+            args: {
+              ...(relatedFilterType ? { filter: { type: relatedFilterType } } : {}),
+              ...(relationship.type === 'one-to-many' ? {
+                pagination: {
+                  type: new GraphQLInputObjectType({
+                    name: `${csvMeta.name}${this.capitalize(fieldName)}Pagination`,
+                    fields: {
+                      offset: { type: GraphQLInt },
+                      limit: { type: GraphQLInt },
+                    },
+                  }),
+                  defaultValue: { offset: 0, limit: 100 },
+                }
+              } : {})
+            },
             resolve: (parent: any, args: any) => {
-              return this.resolveRelationship(parent, relationship, args.filter);
+              return this.resolveRelationship(
+                parent, 
+                relationship, 
+                args.filter, 
+                args.pagination
+              );
             },
           };
         }
@@ -301,9 +318,49 @@ export class SchemaGenerator {
   }
 
 
-  private async resolveRelationship(parent: any, relationship: Relationship, filter?: any): Promise<any> {
+  private async resolveRelationship(
+    parent: any, 
+    relationship: Relationship, 
+    filter?: any, 
+    pagination?: { offset?: number; limit?: number }
+  ): Promise<any> {
     const parentValue = parent[relationship.field];
     if (parentValue === null || parentValue === undefined) return null;
+
+    // For one-to-one relationships, we don't need pagination
+    if (relationship.type === 'one-to-one') {
+      const { sql, params } = this.queryBuilder.buildRelationshipQuery(
+        '', // from table not needed
+        relationship.field,
+        relationship.references,
+        relationship.referenceField,
+        parentValue,
+        false, // isOneToMany = false
+        filter, // Apply filter in SQL
+        undefined // No pagination for one-to-one
+      );
+
+      const results = this.database.query(sql, params);
+
+      // Remove _rowid from results
+      const cleanedResults = results.map(item => {
+        const { _rowid, ...rest } = item;
+        return rest;
+      });
+
+      return cleanedResults[0] || null;
+    }
+
+    // For one-to-many relationships, handle filtering and pagination
+    const offset = Math.max(pagination?.offset ?? 0, 0); // Ensure offset is not negative
+    const limit = pagination?.limit !== undefined 
+      ? Math.min(Math.max(pagination.limit, 0), 1000) // Use provided limit (can be 0), max 1000
+      : 100; // Default to 100 if not provided
+    
+    // If limit is 0, return empty array immediately
+    if (limit === 0) {
+      return [];
+    }
 
     const { sql, params } = this.queryBuilder.buildRelationshipQuery(
       '', // from table not needed
@@ -311,18 +368,12 @@ export class SchemaGenerator {
       relationship.references,
       relationship.referenceField,
       parentValue,
-      relationship.type === 'one-to-many'
+      true, // isOneToMany = true
+      filter,
+      { offset, limit }
     );
 
-    let results = this.database.query(sql, params);
-
-    // Apply filter if provided
-    if (filter) {
-      const relatedSchema = this.schemas.get(relationship.references);
-      if (relatedSchema) {
-        results = this.applyFiltersToData(results, filter, relatedSchema);
-      }
-    }
+    const results = this.database.query(sql, params);
 
     // Remove _rowid from results
     const cleanedResults = results.map(item => {
@@ -330,7 +381,7 @@ export class SchemaGenerator {
       return rest;
     });
 
-    return relationship.type === 'one-to-many' ? cleanedResults : cleanedResults[0] || null;
+    return cleanedResults;
   }
 
   private getGraphQLType(fieldType?: string): GraphQLScalarType {
