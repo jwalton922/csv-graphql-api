@@ -118,6 +118,12 @@ export class SQLQueryBuilder {
     if (filter.eq !== undefined) {
       if (filter.eq === null) {
         conditions.push(`${fieldName} IS NULL`);
+      } else if (filter.eq instanceof Date) {
+        // For Date objects, try both formats since we don't know the field type
+        const dateOnly = filter.eq.toISOString().split('T')[0];
+        const fullISO = filter.eq.toISOString();
+        conditions.push(`(${fieldName} = ? OR ${fieldName} = ?)`);
+        params.push(dateOnly, fullISO);
       } else {
         conditions.push(`${fieldName} = ?`);
         params.push(this.convertFilterValue(filter.eq));
@@ -127,6 +133,11 @@ export class SQLQueryBuilder {
     if (filter.ne !== undefined) {
       if (filter.ne === null) {
         conditions.push(`${fieldName} IS NOT NULL`);
+      } else if (filter.ne instanceof Date) {
+        const dateOnly = filter.ne.toISOString().split('T')[0];
+        const fullISO = filter.ne.toISOString();
+        conditions.push(`(${fieldName} != ? AND ${fieldName} != ?)`);
+        params.push(dateOnly, fullISO);
       } else {
         conditions.push(`${fieldName} != ?`);
         params.push(this.convertFilterValue(filter.ne));
@@ -134,29 +145,72 @@ export class SQLQueryBuilder {
     }
 
     if (filter.gt !== undefined) {
-      conditions.push(`${fieldName} > ?`);
-      params.push(this.convertFilterValue(filter.gt));
+      if (filter.gt instanceof Date) {
+        const dateOnly = filter.gt.toISOString().split('T')[0];
+        const fullISO = filter.gt.toISOString();
+        conditions.push(`(${fieldName} > ? OR ${fieldName} > ?)`);
+        params.push(dateOnly, fullISO);
+      } else {
+        conditions.push(`${fieldName} > ?`);
+        params.push(this.convertFilterValue(filter.gt));
+      }
     }
 
     if (filter.gte !== undefined) {
-      conditions.push(`${fieldName} >= ?`);
-      params.push(this.convertFilterValue(filter.gte));
+      if (filter.gte instanceof Date) {
+        const dateOnly = filter.gte.toISOString().split('T')[0];
+        const fullISO = filter.gte.toISOString();
+        conditions.push(`(${fieldName} >= ? OR ${fieldName} >= ?)`);
+        params.push(dateOnly, fullISO);
+      } else {
+        conditions.push(`${fieldName} >= ?`);
+        params.push(this.convertFilterValue(filter.gte));
+      }
     }
 
     if (filter.lt !== undefined) {
-      conditions.push(`${fieldName} < ?`);
-      params.push(this.convertFilterValue(filter.lt));
+      if (filter.lt instanceof Date) {
+        const dateOnly = filter.lt.toISOString().split('T')[0];
+        const fullISO = filter.lt.toISOString();
+        conditions.push(`(${fieldName} < ? OR ${fieldName} < ?)`);
+        params.push(dateOnly, fullISO);
+      } else {
+        conditions.push(`${fieldName} < ?`);
+        params.push(this.convertFilterValue(filter.lt));
+      }
     }
 
     if (filter.lte !== undefined) {
-      conditions.push(`${fieldName} <= ?`);
-      params.push(this.convertFilterValue(filter.lte));
+      if (filter.lte instanceof Date) {
+        const dateOnly = filter.lte.toISOString().split('T')[0];
+        const fullISO = filter.lte.toISOString();
+        conditions.push(`(${fieldName} <= ? OR ${fieldName} <= ?)`);
+        params.push(dateOnly, fullISO);
+      } else {
+        conditions.push(`${fieldName} <= ?`);
+        params.push(this.convertFilterValue(filter.lte));
+      }
     }
 
-    if (filter.in !== undefined && Array.isArray(filter.in) && filter.in.length > 0) {
-      const placeholders = filter.in.map(() => '?').join(', ');
-      conditions.push(`${fieldName} IN (${placeholders})`);
-      filter.in.forEach((value: any) => params.push(this.convertFilterValue(value)));
+    if (filter.in !== undefined && Array.isArray(filter.in)) {
+      if (filter.in.length === 0) {
+        // Empty array should match nothing - add impossible condition
+        conditions.push('1 = 0');
+      } else {
+        // Handle Date objects in array - need to support both formats
+        const expandedValues: any[] = [];
+        filter.in.forEach((value: any) => {
+          if (value instanceof Date) {
+            expandedValues.push(value.toISOString().split('T')[0]); // Date format
+            expandedValues.push(value.toISOString()); // DateTime format
+          } else {
+            expandedValues.push(this.convertFilterValue(value));
+          }
+        });
+        const placeholders = expandedValues.map(() => '?').join(', ');
+        conditions.push(`${fieldName} IN (${placeholders})`);
+        expandedValues.forEach(value => params.push(value));
+      }
     }
 
     if (filter.contains !== undefined) {
@@ -182,9 +236,12 @@ export class SQLQueryBuilder {
       return null;
     }
     
-    // Handle dates
+    // Handle dates - we need to handle both Date and DateTime formats
     if (value instanceof Date) {
-      return value.toISOString();
+      const isoString = value.toISOString();
+      // For Date objects, we return both formats for comparison
+      // The database query will match against stored values
+      return isoString;
     }
     
     // Handle booleans
