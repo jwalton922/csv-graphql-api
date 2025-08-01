@@ -1,4 +1,5 @@
-import { FilterInput } from '../schema/types';
+import { FilterInput, FieldMetadata, Relationship, CSVMetadata } from '../schema/types';
+import { DatabaseManager } from './database';
 
 export interface FieldFilter {
   eq?: any;
@@ -227,4 +228,123 @@ export function isValidFilter(filter: any): filter is FilterObject {
   }
   
   return true;
+}
+
+/**
+ * Applies nested filters to data, supporting relationship-based filtering
+ * This function filters parent records based on whether ANY related record matches the criteria
+ */
+export function applyNestedFilters<T extends Record<string, any>>(
+  data: T[],
+  filters: any,
+  relationships: Relationship[],
+  database: DatabaseManager,
+  tableName: string
+): T[] {
+  if (!filters || Object.keys(filters).length === 0) {
+    return data;
+  }
+
+  // Cache relationship field names for performance
+  const relationshipFieldMap = new Map<string, Relationship>();
+  relationships.forEach(rel => {
+    const fieldName = getRelationshipFieldName(rel);
+    relationshipFieldMap.set(fieldName, rel);
+  });
+
+  // Separate regular filters from relationship filters for better performance
+  const regularFilters: any = {};
+  const relationshipFilters: Array<{ key: string; relationship: Relationship; filter: any }> = [];
+
+  for (const [filterKey, filterValue] of Object.entries(filters)) {
+    if (!filterValue || Object.keys(filterValue).length === 0) {
+      continue;
+    }
+
+    const relationship = relationshipFieldMap.get(filterKey);
+    if (relationship) {
+      relationshipFilters.push({ key: filterKey, relationship, filter: filterValue });
+    } else {
+      regularFilters[filterKey] = filterValue;
+    }
+  }
+
+  return data.filter(item => {
+    // First apply regular field filters (faster)
+    for (const [fieldName, fieldFilter] of Object.entries(regularFilters)) {
+      const fieldValue = item[fieldName];
+      if (!matchesFieldFilter(fieldValue, fieldFilter as FieldFilter)) {
+        return false;
+      }
+    }
+
+    // Then apply relationship filters (slower, involves database queries)
+    for (const { relationship, filter } of relationshipFilters) {
+      if (!hasMatchingRelatedRecord(item, relationship, filter, database)) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+}
+
+/**
+ * Checks if a parent record has any related records that match the given filter
+ */
+function hasMatchingRelatedRecord(
+  parentRecord: any,
+  relationship: Relationship,
+  relationshipFilter: any,
+  database: DatabaseManager
+): boolean {
+  const parentValue = parentRecord[relationship.field];
+  if (parentValue === null || parentValue === undefined) {
+    return false;
+  }
+
+  try {
+    // Query for related records
+    const safeToTable = database.sanitizeIdentifier(relationship.references);
+    const safeToField = database.sanitizeIdentifier(relationship.referenceField);
+    
+    const sql = `SELECT * FROM ${safeToTable} WHERE ${safeToField} = ?`;
+    const relatedRecords = database.query(sql, [parentValue]);
+
+    if (!relatedRecords || relatedRecords.length === 0) {
+      return false;
+    }
+
+    // Check if ANY related record matches the filter
+    return relatedRecords.some(relatedRecord => {
+      // Apply the relationship filter to this related record
+      for (const [fieldName, fieldFilter] of Object.entries(relationshipFilter)) {
+        if (!fieldFilter || Object.keys(fieldFilter).length === 0) {
+          continue;
+        }
+
+        const fieldValue = relatedRecord[fieldName];
+        if (!matchesFieldFilter(fieldValue, fieldFilter)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  } catch (error) {
+    // Log error and return false to exclude this record from results
+    console.error(`Error filtering relationship ${relationship.references}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Gets the GraphQL field name for a relationship
+ */
+function getRelationshipFieldName(relationship: Relationship): string {
+  const baseName = relationship.references.charAt(0).toLowerCase() + relationship.references.slice(1);
+  if (relationship.type === 'one-to-many') {
+    // Don't add 's' if the name already ends with 's'
+    return baseName.endsWith('s') ? baseName : baseName + 's';
+  }
+  return baseName;
 }

@@ -18,6 +18,7 @@ import { DatabaseManager } from '../data/database';
 import { SQLQueryBuilder } from '../data/sql-builder';
 import { CSVMetadata, FilterInput, PaginationInput, FieldMetadata, Relationship } from './types';
 import { DateScalar, DateTimeScalar } from './scalars';
+import { applyFilters, applyNestedFilters } from '../data/filters';
 
 export class SchemaGenerator {
   private csvLoader: CSVLoader;
@@ -114,13 +115,17 @@ export class SchemaGenerator {
           if (!relatedType) continue;
 
           const fieldName = this.getRelationshipFieldName(relationship);
+          const relatedFilterType = this.filterTypes.get(relationship.references);
           
           fields[fieldName] = {
             type: relationship.type === 'one-to-many' 
               ? new GraphQLList(relatedType)
               : relatedType,
-            resolve: (parent: any) => {
-              return this.resolveRelationship(parent, relationship);
+            args: relatedFilterType ? {
+              filter: { type: relatedFilterType }
+            } : {},
+            resolve: (parent: any, args: any) => {
+              return this.resolveRelationship(parent, relationship, args.filter);
             },
           };
         }
@@ -141,34 +146,47 @@ export class SchemaGenerator {
     const schema = this.schemas.get(csvMeta.name);
     if (!schema) return;
 
-    const filterFields: { [key: string]: GraphQLInputFieldConfig } = {};
-
-    for (const field of schema) {
-      // Skip internal _rowid field
-      if (field.name === '_rowid') continue;
-      
-      const fieldFilterType = new GraphQLInputObjectType({
-        name: `${csvMeta.name}${this.capitalize(field.name)}Filter`,
-        fields: {
-          eq: { type: this.getGraphQLType(field.type) },
-          ne: { type: this.getGraphQLType(field.type) },
-          gt: { type: this.getGraphQLType(field.type) },
-          gte: { type: this.getGraphQLType(field.type) },
-          lt: { type: this.getGraphQLType(field.type) },
-          lte: { type: this.getGraphQLType(field.type) },
-          in: { type: new GraphQLList(this.getGraphQLType(field.type)) },
-          contains: { type: GraphQLString },
-          startsWith: { type: GraphQLString },
-          endsWith: { type: GraphQLString },
-        },
-      });
-
-      filterFields[field.name] = { type: fieldFilterType };
-    }
-
     const filterType = new GraphQLInputObjectType({
       name: `${csvMeta.name}Filter`,
-      fields: filterFields,
+      fields: () => {
+        const filterFields: { [key: string]: GraphQLInputFieldConfig } = {};
+
+        // Add regular field filters
+        for (const field of schema) {
+          // Skip internal _rowid field
+          if (field.name === '_rowid') continue;
+          
+          const fieldFilterType = new GraphQLInputObjectType({
+            name: `${csvMeta.name}${this.capitalize(field.name)}Filter`,
+            fields: {
+              eq: { type: this.getGraphQLType(field.type) },
+              ne: { type: this.getGraphQLType(field.type) },
+              gt: { type: this.getGraphQLType(field.type) },
+              gte: { type: this.getGraphQLType(field.type) },
+              lt: { type: this.getGraphQLType(field.type) },
+              lte: { type: this.getGraphQLType(field.type) },
+              in: { type: new GraphQLList(this.getGraphQLType(field.type)) },
+              contains: { type: GraphQLString },
+              startsWith: { type: GraphQLString },
+              endsWith: { type: GraphQLString },
+            },
+          });
+
+          filterFields[field.name] = { type: fieldFilterType };
+        }
+
+        // Add relationship filters using lazy evaluation
+        for (const relationship of csvMeta.relationships) {
+          const relationshipFieldName = this.getRelationshipFieldName(relationship);
+          const relatedFilterType = this.filterTypes.get(relationship.references);
+          
+          if (relatedFilterType) {
+            filterFields[relationshipFieldName] = { type: relatedFilterType };
+          }
+        }
+
+        return filterFields;
+      },
     });
 
     this.filterTypes.set(csvMeta.name, filterType);
@@ -228,18 +246,43 @@ export class SchemaGenerator {
         const offset = args.pagination?.offset || 0;
         const limit = Math.min(args.pagination?.limit || 100, 1000); // Max 1000 items
 
-        // Build and execute count query
-        const countQuery = this.queryBuilder.buildCountQuery(csvMeta.name, args.filter);
-        const countResult = this.database.query(countQuery.sql, countQuery.params)[0] as { count: number };
-        const totalCount = countResult.count;
+        // Check if we have relationship filters that require nested filtering
+        const hasRelationshipFilters = this.hasRelationshipFilters(args.filter, csvMeta.relationships);
+        
+        let items: any[];
+        let totalCount: number;
+        
+        if (hasRelationshipFilters) {
+          // Use nested filtering approach - get all data first, then filter in memory
+          const allDataQuery = this.queryBuilder.buildSelectQuery(csvMeta.name);
+          const allData = this.database.query(allDataQuery.sql, allDataQuery.params);
+          
+          // Apply nested filters
+          const filteredData = applyNestedFilters(
+            allData,
+            args.filter,
+            csvMeta.relationships,
+            this.database,
+            csvMeta.name
+          );
+          
+          totalCount = filteredData.length;
+          
+          // Apply pagination after filtering
+          items = filteredData.slice(offset, offset + limit);
+        } else {
+          // Use SQL-based filtering for regular field filters
+          const countQuery = this.queryBuilder.buildCountQuery(csvMeta.name, args.filter);
+          const countResult = this.database.query(countQuery.sql, countQuery.params)[0] as { count: number };
+          totalCount = countResult.count;
 
-        // Build and execute select query
-        const selectQuery = this.queryBuilder.buildSelectQuery(
-          csvMeta.name,
-          args.filter,
-          { offset, limit }
-        );
-        const items = this.database.query(selectQuery.sql, selectQuery.params);
+          const selectQuery = this.queryBuilder.buildSelectQuery(
+            csvMeta.name,
+            args.filter,
+            { offset, limit }
+          );
+          items = this.database.query(selectQuery.sql, selectQuery.params);
+        }
 
         // Remove _rowid from results
         const cleanedItems = items.map(item => {
@@ -258,7 +301,7 @@ export class SchemaGenerator {
   }
 
 
-  private async resolveRelationship(parent: any, relationship: Relationship): Promise<any> {
+  private async resolveRelationship(parent: any, relationship: Relationship, filter?: any): Promise<any> {
     const parentValue = parent[relationship.field];
     if (parentValue === null || parentValue === undefined) return null;
 
@@ -271,7 +314,15 @@ export class SchemaGenerator {
       relationship.type === 'one-to-many'
     );
 
-    const results = this.database.query(sql, params);
+    let results = this.database.query(sql, params);
+
+    // Apply filter if provided
+    if (filter) {
+      const relatedSchema = this.schemas.get(relationship.references);
+      if (relatedSchema) {
+        results = this.applyFiltersToData(results, filter, relatedSchema);
+      }
+    }
 
     // Remove _rowid from results
     const cleanedResults = results.map(item => {
@@ -301,15 +352,47 @@ export class SchemaGenerator {
   }
 
   private getQueryName(csvName: string): string {
-    return csvName.charAt(0).toLowerCase() + csvName.slice(1) + 's';
+    const lowercased = csvName.charAt(0).toLowerCase() + csvName.slice(1);
+    // Don't add 's' if the name already ends with 's'
+    return lowercased.endsWith('s') ? lowercased : lowercased + 's';
   }
 
   private getRelationshipFieldName(relationship: Relationship): string {
     const baseName = relationship.references.charAt(0).toLowerCase() + relationship.references.slice(1);
-    return relationship.type === 'one-to-many' ? baseName + 's' : baseName;
+    if (relationship.type === 'one-to-many') {
+      // Don't add 's' if the name already ends with 's'
+      return baseName.endsWith('s') ? baseName : baseName + 's';
+    }
+    return baseName;
   }
 
   private capitalize(str: string): string {
     return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+   * Checks if the filter contains any relationship-based filters
+   */
+  private hasRelationshipFilters(filters: any, relationships: Relationship[]): boolean {
+    if (!filters || !relationships || relationships.length === 0) {
+      return false;
+    }
+
+    const relationshipFieldNames = relationships.map(rel => this.getRelationshipFieldName(rel));
+    
+    return Object.keys(filters).some(filterKey => 
+      relationshipFieldNames.includes(filterKey)
+    );
+  }
+
+  /**
+   * Applies filters to data using in-memory filtering (for relationship filters)
+   */
+  private applyFiltersToData<T extends Record<string, any>>(
+    data: T[],
+    filters: any,
+    schema: FieldMetadata[]
+  ): T[] {
+    return applyFilters(data, filters);
   }
 }

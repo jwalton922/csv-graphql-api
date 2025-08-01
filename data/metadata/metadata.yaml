@@ -17,7 +17,11 @@ csvs:
       - name: is_active
         type: Boolean
         description: Whether the user account is active
-    relationships: []
+    relationships:
+      - field: id
+        references: Orders
+        referenceField: user_id
+        type: one-to-many
 
   - name: Orders
     path: orders.csv

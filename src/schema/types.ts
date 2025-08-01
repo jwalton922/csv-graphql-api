@@ -36,3 +36,27 @@ export interface PaginationInput {
   offset: number;
   limit: number;
 }
+
+/**
+ * Extended filter input that supports nested relationship filtering
+ */
+export interface NestedFilterInput {
+  [fieldName: string]: FilterInput | NestedFilterInput;
+}
+
+/**
+ * Query arguments that include nested filtering support
+ */
+export interface QueryArgs {
+  filter?: NestedFilterInput;
+  pagination?: PaginationInput;
+}
+
+/**
+ * Configuration for relationship filtering behavior
+ */
+export interface RelationshipFilterConfig {
+  field: string;
+  relationship: Relationship;
+  filter: any;
+}
