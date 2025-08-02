@@ -2,33 +2,22 @@
   "name": "graphql-csv-api",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/server.js",
+  "main": "src/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "watch": "tsc --watch",
-    "dev": "nodemon --exec \"npm run build && node dist/server.js\" --ext ts --watch src",
-    "start": "node dist/server.js",
-    "start:prod": "NODE_ENV=production node dist/server.js",
-    "test": "jest",
-    "clean": "rm -rf dist"
+    "dev": "nodemon --exec \"node src/server.js\" --ext js --watch src",
+    "start": "node src/server.js",
+    "start:prod": "NODE_ENV=production node src/server.js",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.1.0",
     "jest": "^29.7.0",
-    "nodemon": "^3.1.10",
-    "ts-jest": "^29.4.0",
-    "typescript": "^5.8.3"
+    "nodemon": "^3.1.10"
   },
   "dependencies": {
     "@graphql-tools/schema": "^10.0.25",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
     "apollo-server-express": "^3.13.0",
     "aws-sdk": "^2.1692.0",
     "better-sqlite3": "^12.2.0",
